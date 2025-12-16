@@ -128,13 +128,71 @@ void display_menu() {
 /*
  * Display CPU usage statistics
  */
+typedef struct {
+    unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+    unsigned long long total, active; 
+} CPUStats;
+
+int get_cpu_stats(CPUStats *stats) {
+    FILE *fp = fopen("/proc/stat", "r");
+    if (!fp) return -1;
+
+    // Read all fields including steal
+    int fields = fscanf(fp, "%*s %llu %llu %llu %llu %llu %llu %llu %llu",
+                        &stats->user, &stats->nice, &stats->system, &stats->idle,
+                        &stats->iowait, &stats->irq, &stats->softirq, &stats->steal);
+    fclose(fp);
+
+    if (fields < 8) return -1;
+
+
+    stats->active = stats->user + stats->nice + stats->system + 
+                    stats->irq + stats->softirq;
+    
+    // Total includes everything.
+    stats->total = stats->active + stats->idle + stats->iowait + stats->steal;
+
+    return 0;
+}
+
 void cpu_usage() {
+    CPUStats prev, curr;
+    
     clear_screen();
-    printf("=== CPU Usage ===\n");
-    printf("\n[Function not yet implemented]\n");
-    write_log("MENU", "CPU Usage viewed");
+    printf("=== CPU Usage Monitor ===\n");
+    printf("Sampling CPU... (1 second)\n");
+
+    if (get_cpu_stats(&prev) != 0) return;
+    sleep(1);
+    if (get_cpu_stats(&curr) != 0) return;
+
+    unsigned long long total_delta = curr.total - prev.total;
+    unsigned long long active_delta = curr.active - prev.active;
+    unsigned long long idle_delta = curr.idle - prev.idle;
+    unsigned long long iowait_delta = curr.iowait - prev.iowait;
+    unsigned long long steal_delta = curr.steal - prev.steal; // Calculate steal separately
+
+    if (total_delta == 0) total_delta = 1;
+
+    double usage_percent = (double)active_delta / total_delta * 100.0;
+    double idle_percent = (double)idle_delta / total_delta * 100.0;
+    double iowait_percent = (double)iowait_delta / total_delta * 100.0;
+    double steal_percent = (double)steal_delta / total_delta * 100.0;
+
+    printf("\n--------------------------------\n");
+    printf("Real-time CPU Usage:\n");
+    printf("%-20s: %.2f%%\n", "Active Usage", usage_percent);
+    printf("%-20s: %.2f%%\n", "Idle", idle_percent);
+    printf("%-20s: %.2f%%\n", "I/O Wait", iowait_percent);
+    
+    //Only show steal if it's significant
+    if (steal_percent > 0.1) {
+        printf("%-20s: %.2f%% (Waiting for Host)\n", "Steal Time", steal_percent);
+    }
+    printf("--------------------------------\n");
+
     printf("\nPress Enter to return to menu...");
-    getchar();
+    getchar(); 
 }
 
 /*
