@@ -23,6 +23,14 @@ typedef struct {
     unsigned long long total_time;
 } ProcessInfo;
 
+typedef struct {
+    unsigned long long total_kb;
+    unsigned long long free_kb;
+    unsigned long long available_kb;
+    unsigned long long buffers_kb;
+    unsigned long long cached_kb;
+} MemInfo;
+
 // Global log file pointer
 FILE *log_file = NULL;
 
@@ -36,6 +44,7 @@ void continuous_monitoring_with_interval(int interval);
 void clear_screen();
 int is_numeric(const char *str);
 int read_process_info(int pid, ProcessInfo *proc);
+int read_meminfo(MemInfo *info);
 int compare_processes(const void *a, const void *b);
 void init_log();
 void write_log(const char *mode, const char *details);
@@ -199,9 +208,41 @@ void cpu_usage() {
  * Display memory usage statistics
  */
 void memory_usage() {
+    MemInfo mem;
+    memset(&mem, 0, sizeof(MemInfo));
+
     clear_screen();
-    printf("=== Memory Usage ===\n");
-    printf("\n[Function not yet implemented]\n");
+    printf("=== Memory Usage ===\n\n");
+
+    if (read_meminfo(&mem) != 0) {
+        perror("Error reading /proc/meminfo");
+        write_log("ERROR", "Failed to read /proc/meminfo");
+        printf("\nPress Enter to return to menu...");
+        getchar();
+        return;
+    }
+
+    // Fallback if MemAvailable is missing on very old kernels
+    if (mem.available_kb == 0) {
+        mem.available_kb = mem.free_kb + mem.buffers_kb + mem.cached_kb;
+    }
+
+    unsigned long long used_kb = (mem.total_kb > mem.available_kb)
+                                 ? (mem.total_kb - mem.available_kb)
+                                 : 0;
+
+    double total_gb = mem.total_kb / 1048576.0;
+    double used_gb = used_kb / 1048576.0;
+    double free_gb = mem.available_kb / 1048576.0;
+    double used_pct = (mem.total_kb == 0) ? 0.0 : ((double)used_kb / mem.total_kb) * 100.0;
+
+    printf("%-12s: %.2f GB\n", "Total", total_gb);
+    printf("%-12s: %.2f GB (%.2f%%)\n", "Used", used_gb, used_pct);
+    printf("%-12s: %.2f GB\n", "Available", free_gb);
+    printf("%-12s: %.2f GB\n", "Free", mem.free_kb / 1048576.0);
+    printf("%-12s: %.2f GB\n", "Buffers", mem.buffers_kb / 1048576.0);
+    printf("%-12s: %.2f GB\n", "Cached", mem.cached_kb / 1048576.0);
+
     write_log("MENU", "Memory Usage viewed");
     printf("\nPress Enter to return to menu...");
     getchar();
@@ -397,6 +438,42 @@ int read_process_info(int pid, ProcessInfo *proc) {
 
     proc->total_time = proc->utime + proc->stime;
     return 1;
+}
+
+/*
+ * Read memory statistics from /proc/meminfo
+ */
+int read_meminfo(MemInfo *info) {
+    FILE *fp = fopen("/proc/meminfo", "r");
+    if (!fp) {
+        return -1;
+    }
+
+    char label[64];
+    unsigned long long value;
+    char unit[16];
+
+    while (fscanf(fp, "%63s %llu %15s", label, &value, unit) == 3) {
+        if (strcmp(label, "MemTotal:") == 0) {
+            info->total_kb = value;
+        } else if (strcmp(label, "MemFree:") == 0) {
+            info->free_kb = value;
+        } else if (strcmp(label, "MemAvailable:") == 0) {
+            info->available_kb = value;
+        } else if (strcmp(label, "Buffers:") == 0) {
+            info->buffers_kb = value;
+        } else if (strcmp(label, "Cached:") == 0) {
+            info->cached_kb = value;
+        }
+    }
+
+    fclose(fp);
+
+    if (info->total_kb == 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 /*
