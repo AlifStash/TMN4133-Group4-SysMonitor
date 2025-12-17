@@ -352,13 +352,31 @@ void top_processes() {
  * Continuously monitor system statistics (interactive mode)
  */
 void continuous_monitoring() {
+    int interval;
+    
     clear_screen();
-    printf("=== Continuous Monitoring ===\n");
-    printf("\n[Function not yet implemented]\n");
-    printf("\nFor command-line mode, use: ./sysmonitor -c <interval>\n");
-    write_log("MENU", "Continuous Monitoring viewed");
-    printf("\nPress Enter to return to menu...");
-    getchar();
+    printf("=== Continuous Monitoring ===\n\n");
+    printf("Enter refresh interval in seconds (recommended: 2-5): ");
+    
+    if (scanf("%d", &interval) != 1) {
+        // Clear invalid input
+        while (getchar() != '\n');
+        printf("\nInvalid input. Using default interval of 2 seconds.\n");
+        interval = 2;
+        sleep(2);
+    } else {
+        // Clear input buffer
+        while (getchar() != '\n');
+    }
+    
+    if (interval <= 0) {
+        printf("\nError: Interval must be positive. Using default of 2 seconds.\n");
+        interval = 2;
+        sleep(2);
+    }
+    
+    write_log("MENU", "Continuous monitoring started from interactive menu");
+    continuous_monitoring_with_interval(interval);
 }
 
 /*
@@ -647,8 +665,19 @@ int parse_arguments(int argc, char *argv[]) {
  * Continuous monitoring with specified interval
  */
 void continuous_monitoring_with_interval(int interval) {
+    CPUStats prev, curr;
+    MemInfo mem;
+    
     printf("=== Continuous Monitoring (Every %d seconds) ===\n", interval);
     printf("Press Ctrl+C to stop...\n\n");
+    
+    // Get initial CPU stats for delta calculation
+    if (get_cpu_stats(&prev) != 0) {
+        fprintf(stderr, "Error: Could not read CPU stats\n");
+        write_log("ERROR", "Failed to read initial CPU stats for continuous monitoring");
+        return;
+    }
+    sleep(1); // Allow time for CPU stats to accumulate
     
     int iteration = 0;
     while (1) {
@@ -656,20 +685,79 @@ void continuous_monitoring_with_interval(int interval) {
         
         // Clear screen and display header
         clear_screen();
-        printf("=== Continuous Monitoring (Iteration %d) ===\n", iteration);
-        printf("Refresh Interval: %d seconds | Press Ctrl+C to stop\n\n", interval);
+        printf("═══════════════════════════════════════════════════════════════\n");
+        printf("         CONTINUOUS SYSTEM MONITORING - Iteration %d\n", iteration);
+        printf("═══════════════════════════════════════════════════════════════\n");
+        printf("Refresh Interval: %d seconds | Press Ctrl+C to stop\n", interval);
+        printf("Last Update: %s\n\n", get_timestamp());
         
-        // Display timestamp
-        printf("[%s]\n\n", get_timestamp());
+        // Get current CPU stats
+        if (get_cpu_stats(&curr) == 0) {
+            unsigned long long total_delta = curr.total - prev.total;
+            unsigned long long active_delta = curr.active - prev.active;
+            unsigned long long idle_delta = curr.idle - prev.idle;
+            unsigned long long iowait_delta = curr.iowait - prev.iowait;
+            unsigned long long steal_delta = curr.steal - prev.steal;
+            
+            if (total_delta == 0) total_delta = 1;
+            
+            double usage_percent = (double)active_delta / total_delta * 100.0;
+            double idle_percent = (double)idle_delta / total_delta * 100.0;
+            double iowait_percent = (double)iowait_delta / total_delta * 100.0;
+            double steal_percent = (double)steal_delta / total_delta * 100.0;
+            
+            printf("┌─ CPU Usage ─────────────────────────────────────────────────┐\n");
+            printf("│ Active Usage:        %6.2f%%                              │\n", usage_percent);
+            printf("│ Idle:                %6.2f%%                              │\n", idle_percent);
+            printf("│ I/O Wait:            %6.2f%%                              │\n", iowait_percent);
+            if (steal_percent > 0.1) {
+                printf("│ Steal Time (Host):   %6.2f%% (VM waiting for host CPU)      │\n", steal_percent);
+            }
+            printf("└─────────────────────────────────────────────────────────────┘\n\n");
+            
+            // Update prev stats for next iteration
+            prev = curr;
+        } else {
+            printf("┌─ CPU Usage ─────────────────────────────────────────────────┐\n");
+            printf("│ Error reading CPU statistics\n");
+            printf("└─────────────────────────────────────────────────────────────┘\n\n");
+        }
         
-        // Display system information (placeholder for now)
-        printf("CPU Usage: [Not implemented]\n");
-        printf("Memory Usage: [Not implemented]\n");
-        printf("\nMonitoring... (waiting %d seconds)\n", interval);
+        // Display memory statistics
+        memset(&mem, 0, sizeof(MemInfo));
+        if (read_meminfo(&mem) == 0) {
+            if (mem.available_kb == 0) {
+                mem.available_kb = mem.free_kb + mem.buffers_kb + mem.cached_kb;
+            }
+            
+            unsigned long long used_kb = (mem.total_kb > mem.available_kb)
+                                         ? (mem.total_kb - mem.available_kb)
+                                         : 0;
+            
+            double total_gb = mem.total_kb / 1048576.0;
+            double used_gb = used_kb / 1048576.0;
+            double free_gb = mem.available_kb / 1048576.0;
+            double used_pct = (mem.total_kb == 0) ? 0.0 : ((double)used_kb / mem.total_kb) * 100.0;
+            
+            printf("┌─ Memory Usage ──────────────────────────────────────────────┐\n");
+            printf("│ Total:               %8.2f GB                           │\n", total_gb);
+            printf("│ Used:                %8.2f GB (%.2f%%)                   │\n", used_gb, used_pct);
+            printf("│ Available:           %8.2f GB                           │\n", free_gb);
+            printf("│ Buffers:             %8.2f GB                           │\n", mem.buffers_kb / 1048576.0);
+            printf("│ Cached:              %8.2f GB                           │\n", mem.cached_kb / 1048576.0);
+            printf("└─────────────────────────────────────────────────────────────┘\n");
+        } else {
+            printf("┌─ Memory Usage ──────────────────────────────────────────────┐\n");
+            printf("│ Error reading memory statistics\n");
+            printf("└─────────────────────────────────────────────────────────────┘\n");
+        }
+        
+        printf("\n");
+        printf("Next refresh in %d seconds... (Press Ctrl+C to exit)\n", interval);
         
         // Log periodic entry
         char log_msg[256];
-        snprintf(log_msg, sizeof(log_msg), "Continuous monitoring - iteration %d", iteration);
+        snprintf(log_msg, sizeof(log_msg), "Continuous monitoring - iteration %d (interval %d seconds)", iteration, interval);
         write_log("MONITOR", log_msg);
         
         // Wait for specified interval
