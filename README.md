@@ -1,9 +1,13 @@
 # TMN4133-Group4-SysMonitor
 # Team member:
-ALIF AIMAN BIN OTHMAN (83162)
-LLOYD MCCLINN ANAK SUNDAI (82646)
-AHMAD AZIM BIN AZIZ (83082)
-AIMAN ZUFRI BIN ZAINUDDIN (82364)
+1.ALIF AIMAN BIN OTHMAN (83162)
+
+2.LLOYD MCCLINN ANAK SUNDAI (82646)
+
+3.AHMAD AZIM BIN AZIZ (83082)
+
+4.AIMAN ZUFRI BIN ZAINUDDIN (82364)
+
 -------------------------------------------------------------------------------------
 # HOW TO USE sysmonitor.c
 1. Compile sysmonitor.c by typing "gcc sysmonitor.c -o sysmonitor" in terminal
@@ -13,7 +17,11 @@ AIMAN ZUFRI BIN ZAINUDDIN (82364)
 5. syslog can be access in the same folder as the sysmonitor.
 -------------------------------------------------------------------------------------
 # Other Command line to use for sysmonitor.c
-"./sysmonitor -m cpu" - Display CPU Usage
-"./sysmonitor -m mem" - Display Memory Usage
-"./sysmonitor -m proc" - Display Top 5 Active Processes 
-"./sysmonitor -c 2" - Display Continous Monitoring every 2 seconds
+1."./sysmonitor -m cpu" - Display CPU Usage
+
+2."./sysmonitor -m mem" - Display Memory Usage
+
+3."./sysmonitor -m proc" - Display Top 5 Active Processes 
+
+4."./sysmonitor -c 2" - Display Continous Monitoring every 2 seconds
+
