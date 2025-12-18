@@ -200,6 +200,7 @@ void cpu_usage() {
     }
     printf("--------------------------------\n");
 
+    write_log("MENU", "CPU Usage viewed");
     printf("\nPress Enter to return to menu...");
     getchar(); 
 }
